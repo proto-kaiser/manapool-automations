@@ -1,0 +1,50 @@
+services:
+  cups:
+    image: olbat/cupsd:latest
+    container_name: manapool-cups
+    restart: unless-stopped
+    ports:
+      - "631:631"
+    environment:
+      - TZ=${TZ:-America/New_York}
+    volumes:
+      - cups_config:/etc/cups
+      - /mnt/tank/configs/manapool-automations/cupsd.conf:/tmp/cupsd.conf
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "cp /tmp/cupsd.conf /etc/cups/cupsd.conf && exec cupsd -f",
+      ]
+
+  manapool-printer:
+    image: manapool-printer:latest
+    container_name: manapool-printer
+    restart: unless-stopped
+    depends_on:
+      - cups
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - MANAPOOL_API_KEY=${MANAPOOL_API_KEY}
+      - MANAPOOL_EMAIL=${MANAPOOL_EMAIL}
+      - PRINTER_NAME=${PRINTER_NAME}
+      - POLL_INTERVAL=${POLL_INTERVAL:-3600}
+      - CUPS_SERVER=cups:631
+      - SELLER_NAME=${SELLER_NAME}
+    volumes:
+      - /mnt/tank/configs/manapool-automations/data:/data
+
+  manapool-pricer:
+    image: manapool-pricer:latest
+    container_name: manapool-pricer
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - MANAPOOL_API_KEY=${MANAPOOL_API_KEY}
+      - MANAPOOL_EMAIL=${MANAPOOL_EMAIL}
+      - PRICE_UPDATE_INTERVAL=${PRICE_UPDATE_INTERVAL:-14400}
+      - PRICE_MODIFIER=${PRICE_MODIFIER:--1}
+      - MIN_CONFIDENCE=${MIN_CONFIDENCE:-0.5}
+      - ROUND_TO=${ROUND_TO:-1}
+volumes:
+  cups_config:

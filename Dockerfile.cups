@@ -1,0 +1,2 @@
+FROM olbat/cupsd:latest
+COPY cupsd.conf /etc/cups/cupsd.conf

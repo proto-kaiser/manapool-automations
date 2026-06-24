@@ -1,14 +1,18 @@
 """
 ManaPool Auto-Print (polling edition)
 --------------------------------------
-Runs in a loop. Every 60 seconds it asks the ManaPool API for new orders.
-Any order it hasn't seen before gets printed as a packing slip via CUPS.
-No webhooks, no open ports, no tunnel needed.
+Runs in a loop. Every POLL_INTERVAL seconds it asks the ManaPool API for
+new orders that have no fulfillment yet. After printing, it creates a
+fulfillment record via the API — no local file needed to track what's
+been printed.
 
 Environment variables (set in Portainer):
   MANAPOOL_API_KEY  — your ManaPool API key
+  MANAPOOL_EMAIL    — your ManaPool account email
   PRINTER_NAME      — CUPS printer name (find with: lpstat -a)
-  POLL_INTERVAL     — seconds between checks (default: 60)
+  POLL_INTERVAL     — seconds between checks (default: 3600)
+  CUPS_SERVER       — optional CUPS host:port for container networking
+  SELLER_NAME       — your store name (shown on packing slip)
 """
 
 import os
@@ -24,15 +28,14 @@ from playwright.sync_api import sync_playwright
 
 # ─── CONFIGURATION ────────────────────────────────────────────────────────────
 
-API_KEY = os.environ.get("MANAPOOL_API_KEY", "YOUR_API_KEY_HERE")
-API_EMAIL = os.environ.get("MANAPOOL_EMAIL", "YOUR_EMAIL_HERE")
-PRINTER_NAME = os.environ.get("PRINTER_NAME", "YOUR_PRINTER_NAME")
+API_KEY       = os.environ.get("MANAPOOL_API_KEY", "YOUR_API_KEY_HERE")
+API_EMAIL     = os.environ.get("MANAPOOL_EMAIL", "YOUR_EMAIL_HERE")
+PRINTER_NAME  = os.environ.get("PRINTER_NAME", "YOUR_PRINTER_NAME")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "3600"))
-CUPS_SERVER = os.environ.get("CUPS_SERVER", "")  # e.g. cups:631 for container
-SELLER_NAME = os.environ.get("SELLER_NAME", "Seller")
+CUPS_SERVER   = os.environ.get("CUPS_SERVER", "")
+SELLER_NAME   = os.environ.get("SELLER_NAME", "Seller")
 
 API_BASE = "https://manapool.com/api/v1"
-SEEN_FILE = "/data/printed_orders.txt"  # persisted via Docker volume
 
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
 
@@ -49,37 +52,24 @@ def api_headers() -> dict:
     }
 
 
-def load_seen() -> set:
-    """Load the set of already-printed order IDs from disk."""
-    path = Path(SEEN_FILE)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        return set(path.read_text().splitlines())
-    return set()
-
-
-def save_seen(seen: set):
-    Path(SEEN_FILE).write_text("\n".join(seen))
-
-
 def fetch_new_orders(seen: set) -> list:
-    """Fetch recent orders from ManaPool, return only ones we haven't printed."""
+    """Fetch unfulfilled orders with no fulfillment record yet."""
     try:
         resp = requests.get(
             f"{API_BASE}/seller/orders",
             headers=api_headers(),
-            params={"is_fulfilled": "false"},
+            params={"is_fulfilled": "false", "has_fulfillments": "false"},
             timeout=15,
         )
         resp.raise_for_status()
         data = resp.json()
         orders = data.get("orders", data if isinstance(data, list) else [])
         if not orders and isinstance(data, dict):
-            # Try common wrapper keys
             for key in ["data", "results", "order_list"]:
                 if key in data and isinstance(data[key], list):
                     orders = data[key]
                     break
+        # In-memory fallback: skip anything already handled this session
         return [o for o in orders if str(o.get("id")) not in seen]
     except Exception as e:
         log(f"✗ Failed to fetch orders: {e}")
@@ -92,13 +82,27 @@ def fetch_order_detail(order_id: str) -> dict:
     )
     resp.raise_for_status()
     data = resp.json()
-    # Unwrap if the response nests the order under a key
     if isinstance(data, dict):
         for key in ["order", "data", "result"]:
             if key in data and isinstance(data[key], dict):
                 data = data[key]
                 break
     return data
+
+
+def update_order_status(order_id: str, status: str = "processing"):
+    """Create/update fulfillment via PUT /seller/orders/{id}/fulfillment."""
+    resp = requests.put(
+        f"{API_BASE}/seller/orders/{order_id}/fulfillment",
+        headers=api_headers(),
+        json={"fulfillment": {"status": status}},
+        timeout=15,
+    )
+    if resp.status_code == 409:
+        log(f"  ⚠ Order {order_id} fulfillment already exists — skipping status update")
+        return
+    resp.raise_for_status()
+    log(f"  ✓ Order {order_id} marked as {status}")
 
 
 FINISH_LABELS = {"NF": "Non-Foil", "FO": "Foil", "EF": "Etched Foil"}
@@ -113,22 +117,22 @@ CONDITION_LABELS = {
 
 def flatten_item(item: dict) -> dict:
     """Flatten nested API item into the structure the packing slip template expects."""
-    product = item.get("product", {})
-    single = product.get("single") or {}
-    sealed = product.get("sealed") or {}
-    info = single or sealed
-    finish_id = info.get("finish_id", "")
+    product      = item.get("product", {})
+    single       = product.get("single") or {}
+    sealed       = product.get("sealed") or {}
+    info         = single or sealed
+    finish_id    = info.get("finish_id", "")
     condition_id = info.get("condition_id", "")
     return {
-        "quantity": item.get("quantity", 1),
-        "name": info.get("name", "Item"),
-        "set_code": info.get("set", ""),
-        "condition": CONDITION_LABELS.get(condition_id, condition_id),
-        "finish": FINISH_LABELS.get(finish_id, finish_id),
-        "foil": finish_id == "FO",
-        "language": info.get("language_id", "EN"),
+        "quantity":         item.get("quantity", 1),
+        "name":             info.get("name", "Item"),
+        "set_code":         info.get("set", ""),
+        "condition":        CONDITION_LABELS.get(condition_id, condition_id),
+        "finish":           FINISH_LABELS.get(finish_id, finish_id),
+        "foil":             finish_id == "FO",
+        "language":         info.get("language_id", "EN"),
         "collector_number": info.get("number", ""),
-        "price": item.get("price_cents", 0) / 100,
+        "price":            item.get("price_cents", 0) / 100,
     }
 
 
@@ -136,7 +140,6 @@ def render_packing_slip(order: dict) -> str:
     template_path = Path(__file__).parent / "packing_slip.html"
     template = Template(template_path.read_text())
 
-    # Format date as M/D/YYYY
     created = order.get("created_at", "")
     try:
         d = datetime.fromisoformat(created.replace("Z", "+00:00"))
@@ -145,18 +148,16 @@ def render_packing_slip(order: dict) -> str:
         order_date = created[:10] if created else ""
 
     raw_items = order.get("items", [])
-    items = [flatten_item(i) for i in raw_items]
+    items     = [flatten_item(i) for i in raw_items]
 
-    payment = order.get("payment", {})
-    subtotal = payment.get("subtotal_cents", 0) / 100
+    payment        = order.get("payment", {})
+    subtotal       = payment.get("subtotal_cents", 0) / 100
     if not subtotal:
-        subtotal = sum(i["price"] * i["quantity"] for i in items)
+        subtotal   = sum(i["price"] * i["quantity"] for i in items)
     shipping_total = payment.get("shipping_cents", 0) / 100
-    total = payment.get("total_cents", order.get("total_cents", 0)) / 100
+    total          = payment.get("total_cents", order.get("total_cents", 0)) / 100
 
     shipping_address = order.get("shipping_address", {})
-
-    # Normalise postal code — API may use any of these field names
     if "postal_code" not in shipping_address:
         for key in ("zip", "zip_code", "zipcode", "postcode", "postalCode"):
             if key in shipping_address:
@@ -185,16 +186,16 @@ def print_html(html_content: str):
 
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox"])
-        page = browser.new_page()
+        page    = browser.new_page()
         page.set_content(html_content, wait_until="networkidle")
         page.pdf(
             path=pdf_path,
             format="Letter",
             margin={
-                "top": "0.5in",
+                "top":    "0.5in",
                 "bottom": "0.5in",
-                "left": "0.5in",
-                "right": "0.5in",
+                "left":   "0.5in",
+                "right":  "0.5in",
             },
             print_background=True,
         )
@@ -223,8 +224,10 @@ def main():
     log(f"  Interval: every {POLL_INTERVAL}s")
     log("=" * 50)
 
-    seen = load_seen()
-    log(f"Loaded {len(seen)} previously printed order(s)")
+    # In-memory set — guards against double-prints within a single session
+    # if a fulfillment update fails. Resets on container restart (intentional —
+    # the API is now the source of truth via has_fulfillments=false).
+    seen: set = set()
 
     while True:
         log("Checking for new orders...")
@@ -239,13 +242,13 @@ def main():
                 try:
                     log(f"  Fetching detail for order {order_id}...")
                     order = fetch_order_detail(order_id)
-                    html = render_packing_slip(order)
+                    html  = render_packing_slip(order)
                     print_html(html)
                     log(f"  ✓ Printed order {order_id}")
                     seen.add(order_id)
-                    save_seen(seen)
+                    update_order_status(order_id, "processing")
                 except Exception as e:
-                    log(f"  ✗ Failed to print order {order_id}: {e}")
+                    log(f"  ✗ Failed on order {order_id}: {e}")
 
         time.sleep(POLL_INTERVAL)
 

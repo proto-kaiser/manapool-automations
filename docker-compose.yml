@@ -31,8 +31,6 @@ services:
       - POLL_INTERVAL=${POLL_INTERVAL:-3600}
       - CUPS_SERVER=cups:631
       - SELLER_NAME=${SELLER_NAME}
-    volumes:
-      - /mnt/tank/configs/manapool-automations/data:/data
 
   manapool-pricer:
     image: manapool-pricer:latest
@@ -46,5 +44,6 @@ services:
       - PRICE_MODIFIER=${PRICE_MODIFIER:--1}
       - MIN_CONFIDENCE=${MIN_CONFIDENCE:-0.5}
       - ROUND_TO=${ROUND_TO:-1}
+
 volumes:
   cups_config:

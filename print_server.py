@@ -95,7 +95,7 @@ def update_order_status(order_id: str, status: str = "processing"):
     resp = requests.put(
         f"{API_BASE}/seller/orders/{order_id}/fulfillment",
         headers=api_headers(),
-        json={"fulfillment": {"status": status}},
+        json={"status": status},
         timeout=15,
     )
     if resp.status_code == 409:

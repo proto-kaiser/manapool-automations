@@ -13,6 +13,8 @@ Environment variables (set in Portainer):
   ROUND_TO             — round to nearest cents value (default: 1)
 """
 
+# pylint: disable=duplicate-code
+
 import os
 import time
 from datetime import datetime
@@ -35,10 +37,12 @@ MAX_REDUCTION_PCT = float(os.environ.get("MAX_REDUCTION_PCT", "15"))
 
 
 def log(msg: str):
+    """Print a timestamped log message."""
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
 
 
 def api_headers() -> dict:
+    """Return the authentication headers for ManaPool API requests."""
     return {
         "X-ManaPool-Email": API_EMAIL,
         "X-ManaPool-Access-Token": API_KEY,
@@ -47,6 +51,7 @@ def api_headers() -> dict:
 
 
 def build_payload() -> dict:
+    """Build the bulk price request payload from the configured settings."""
     return {
         "filters": {
             "productFilters": {"productType": "mtg_single"},
@@ -119,7 +124,7 @@ def run_preview() -> bool:
             return False
 
         return True
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
         log(f"  ✗ Preview failed: {e}")
         return True
 
@@ -146,7 +151,7 @@ def update_prices() -> str | None:
         if e.response is not None:
             log(f"    {e.response.text[:500]}")
         return None
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
         log(f"  ✗ Failed: {e}")
         return None
 
@@ -177,7 +182,7 @@ def poll_job(job_id: str):
                 )
                 return
             log(f"  Job {status}: {processed}/{total} processed...")
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             log(f"  ✗ Poll error: {e}")
 
     log("  Job still running after 5 minutes — will check next cycle")
@@ -187,9 +192,10 @@ def poll_job(job_id: str):
 
 
 def main():
+    """Run the price-update loop on the configured interval."""
     log("=" * 50)
     log("  ManaPool Price Updater")
-    log(f"  Strategy : market_low_percentage")
+    log("  Strategy : market_low_percentage")
     log(f"  Modifier : {PRICE_MODIFIER}%")
     log(f"  Max drop : {MAX_REDUCTION_PCT}%")
     log(f"  Interval : every {UPDATE_INTERVAL}s")

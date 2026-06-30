@@ -1,10 +1,11 @@
 """Render a packing slip preview with dummy data and open in browser."""
 
-from pathlib import Path
-from jinja2 import Template
 import webbrowser
+from pathlib import Path
 
-template = Template(Path("packing_slip.html").read_text())
+from jinja2 import Template
+
+template = Template(Path("packing_slip.html").read_text(encoding="utf-8"))
 
 html = template.render(
     order_id="000000-0000000",
@@ -60,6 +61,6 @@ html = template.render(
 )
 
 out = Path("preview.html")
-out.write_text(html)
+out.write_text(html, encoding="utf-8")
 webbrowser.open(out.resolve().as_uri())
 print(f"Preview saved to {out.resolve()}")

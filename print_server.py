@@ -107,6 +107,21 @@ def fetch_order_detail(order_id: str) -> dict:
     return data
 
 
+def update_order_status(order_id: str, status: str = "processing"):
+    """Create/update fulfillment via PUT /seller/orders/{id}/fulfillment."""
+    resp = requests.put(
+        f"{API_BASE}/seller/orders/{order_id}/fulfillment",
+        headers=api_headers(),
+        json={"status": status},
+        timeout=15,
+    )
+    if resp.status_code == 409:
+        log(f"  ⚠ Order {order_id} fulfillment already exists — skipping status update")
+        return
+    resp.raise_for_status()
+    log(f"  ✓ Order {order_id} marked as {status}")
+
+
 FINISH_LABELS = {"NF": "Non-Foil", "FO": "Foil", "EF": "Etched Foil"}
 CONDITION_LABELS = {
     "NM": "Near Mint",
@@ -252,6 +267,7 @@ def main():
                     log(f"  ✓ Printed order {order_id}")
                     seen.add(order_id)
                     save_seen(seen)
+                    update_order_status(order_id, "processing")
                 except Exception as e:  # pylint: disable=broad-exception-caught
                     log(f"  ✗ Failed to print order {order_id}: {e}")
 

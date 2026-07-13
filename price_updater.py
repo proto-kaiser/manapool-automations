@@ -60,7 +60,7 @@ def build_payload() -> dict:
         "pricing": {
             "strategy": "market_low_percentage",
             "modifier": PRICE_MODIFIER,
-            "threshold": MAX_REDUCTION_PCT,
+            "maxAllowedChange": MAX_REDUCTION_PCT,
         },
         "excludeLetterShippingDisabledSellers": False,
     }

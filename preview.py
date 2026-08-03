@@ -1,288 +1,76 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Packing Slip – 000000-0000000</title>
-    <style>
-      *,
-      *::before,
-      *::after {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
+"""Render a packing slip preview with dummy data and open in browser."""
 
-      body {
-        font-family:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
-          Arial, sans-serif;
-        font-size: 10pt;
-        color: #333;
-        background: #fff;
-        padding: 0;
-        max-width: 8.5in;
-      }
+import webbrowser
+from pathlib import Path
 
-      /*
-        Top panel: fixed height for #10 envelope tri-fold.
-        Letter = 11", tri-fold panel = 3.667".
-        Minus 0.5" PDF top margin = 3.167" of content.
-        Address uses margin-top:auto to sit near the fold,
-        aligned with the #10 window (~2.5–3.375" from page top).
-      */
-      .top-panel {
-        height: 3.17in;
-        display: flex;
-        flex-direction: column;
-      }
+from jinja2 import Template
 
-      .header {
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        padding: 14px 20px;
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-      }
+template = Template(Path("packing_slip.html").read_text(encoding="utf-8"))
 
-      .header-left {
-      }
+html = template.render(
+    order_id="000000-0000000",
+    order_label="000000-0000000",
+    order_date="1/1/2025",
+    seller_name="YourStoreName",
+    buyer={"name": "Jane Doe", "username": "janedoe99"},
+    shipping_address={
+        "line1": "123 Main St",
+        "line2": "Apt 1",
+        "city": "Anytown",
+        "state": "CA",
+        "zip": "90210",
+        "country": "US",
+    },
+    items=[
+        {
+            "name": "Sazacap's Brew",
+            "set_code": "BLB",
+            "condition": "NM",
+            "foil": False,
+            "language": "EN",
+            "collector_number": "151",
+            "quantity": 1,
+            "price": 0.15,
+        },
+        {
+            "name": "Unexpected Windfall",
+            "set_code": "PLST",
+            "condition": "NM",
+            "foil": False,
+            "language": "EN",
+            "collector_number": "AFR-164",
+            "quantity": 1,
+            "price": 2.88,
+        },
+        {
+            "name": "Crackle with Power",
+            "variant": "SHOWCASE",
+            "set_code": "SOA",
+            "condition": "NM",
+            "foil": False,
+            "language": "JA",
+            "collector_number": "107",
+            "quantity": 1,
+            "price": 11.62,
+        },
+        {
+            "name": "Thundertrap Trainer",
+            "set_code": "BLB",
+            "condition": "NM",
+            "foil": False,
+            "language": "EN",
+            "collector_number": "307",
+            "quantity": 1,
+            "price": 2.29,
+        },
+    ],
+    subtotal=14.65,
+    shipping_total=1.30,
+    total=15.95,
+    printed_at="2026-05-15 14:30:00",
+)
 
-      .logo-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 4px;
-      }
-
-      .logo-icon {
-        width: 32px;
-        height: 32px;
-      }
-
-      .logo-text {
-        font-size: 18pt;
-        font-weight: 700;
-        color: #2a2a2a;
-        letter-spacing: -0.5px;
-      }
-
-      .seller-line {
-        font-size: 9pt;
-        color: #555;
-        padding-left: 40px;
-      }
-
-      .header-center {
-        text-align: right;
-        padding-top: 4px;
-      }
-
-      .order-number {
-        font-size: 10pt;
-        font-weight: 600;
-        color: #333;
-        margin-bottom: 2px;
-      }
-
-      .order-date {
-        font-size: 9pt;
-        color: #666;
-      }
-
-      .address-block {
-        margin-top: auto;
-        margin-bottom: 0.6in;
-        line-height: 1.5;
-        font-size: 11pt;
-        padding-left: 0.5in;
-      }
-
-      .fold-line {
-        display: flex;
-        align-items: center;
-        margin: 0 0 16px 0;
-      }
-
-      .fold-line::before,
-      .fold-line::after {
-        content: "";
-        flex: 1;
-        border-top: 2px dashed #ccc;
-      }
-
-      .fold-line span {
-        padding: 0 16px;
-        font-size: 9pt;
-        color: #aaa;
-      }
-
-      table {
-        width: 100%;
-        border-collapse: collapse;
-      }
-
-      thead th {
-        padding: 10px 12px;
-        text-align: left;
-        font-size: 9pt;
-        font-weight: 600;
-        color: #555;
-        background: #f5f5f5;
-        border-bottom: 1px solid #ddd;
-      }
-
-      thead th:first-child {
-        padding-left: 14px;
-      }
-      thead th:last-child {
-        text-align: right;
-        padding-right: 14px;
-      }
-
-      tbody td {
-        padding: 10px 12px;
-        font-size: 10pt;
-        vertical-align: middle;
-        border-bottom: 1px solid #eee;
-      }
-
-      tbody td:first-child {
-        padding-left: 14px;
-        text-align: center;
-      }
-      tbody td:last-child {
-        text-align: right;
-        padding-right: 14px;
-      }
-
-      tfoot td {
-        padding: 8px 12px;
-        font-size: 10pt;
-        border-bottom: 1px solid #eee;
-      }
-
-      tfoot td:first-child {
-        padding-left: 14px;
-      }
-      tfoot td:last-child {
-        text-align: right;
-        padding-right: 14px;
-      }
-
-      .total-row td {
-        font-weight: 700;
-        font-size: 11pt;
-        border-bottom: none;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="top-panel">
-      <div class="header">
-        <div class="header-left">
-          <div class="logo-row">
-            <img
-              class="logo-icon"
-              src="https://manapool.com/favicon.ico"
-              alt="Mana Pool"
-              onerror="this.style.display = 'none'"
-            />
-            <span class="logo-text">Mana Pool</span>
-          </div>
-          <div class="seller-line">Purchased from YourStoreName</div>
-        </div>
-        <div class="header-center">
-          <div class="order-number">Mana Pool Order #000000-0000000</div>
-          <div class="order-date">Order Date: 1/1/2025</div>
-        </div>
-      </div>
-
-      <div class="address-block">
-        <div>Jane Doe</div>
-
-        <div>123 Main St</div>
-
-        <div>Apt 1</div>
-
-        <div>Anytown, CA</div>
-      </div>
-    </div>
-
-    <div class="fold-line"><span>Fold</span></div>
-
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 40px">Qty</th>
-          <th>Description</th>
-          <th style="width: 55px">Set</th>
-          <th style="width: 50px">Cond</th>
-          <th style="width: 65px">Finish</th>
-          <th style="width: 45px">Lang</th>
-          <th style="width: 65px">#</th>
-          <th style="width: 70px">Price</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>1</td>
-          <td>Sazacap's Brew</td>
-          <td>BLB</td>
-          <td>NM</td>
-          <td>Non-Foil</td>
-          <td>EN</td>
-          <td>151</td>
-          <td>$0.15</td>
-        </tr>
-
-        <tr>
-          <td>1</td>
-          <td>Thundertrap Trainer</td>
-          <td>BLB</td>
-          <td>NM</td>
-          <td>Non-Foil</td>
-          <td>EN</td>
-          <td>307</td>
-          <td>$2.29</td>
-        </tr>
-
-        <tr>
-          <td>1</td>
-          <td>Unexpected Windfall</td>
-          <td>PLST</td>
-          <td>NM</td>
-          <td>Non-Foil</td>
-          <td>EN</td>
-          <td>AFR-164</td>
-          <td>$2.88</td>
-        </tr>
-
-        <tr>
-          <td>1</td>
-          <td>Crackle with Power<br />SHOWCASE</td>
-          <td>SOA</td>
-          <td>NM</td>
-          <td>Non-Foil</td>
-          <td>JA</td>
-          <td>107</td>
-          <td>$11.62</td>
-        </tr>
-      </tbody>
-      <tfoot>
-        <tr>
-          <td colspan="7">4 cards</td>
-          <td>$14.65</td>
-        </tr>
-        <tr>
-          <td colspan="7">Shipping</td>
-          <td>$1.30</td>
-        </tr>
-        <tr class="total-row">
-          <td colspan="7">Total</td>
-          <td>$15.95</td>
-        </tr>
-      </tfoot>
-    </table>
-  </body>
-</html>
+out = Path("preview.html")
+out.write_text(html, encoding="utf-8")
+webbrowser.open(out.resolve().as_uri())
+print(f"Preview saved to {out.resolve()}")

@@ -235,7 +235,8 @@
       </thead>
       <tbody>
         {% set sorted_items = items | sort(attribute='name') |
-        sort(attribute='set_code') %} {% for item in sorted_items %}
+        sort(attribute='foil', reverse=true) | sort(attribute='set_code') %} {%
+        for item in sorted_items %}
         <tr>
           <td>{{ item.get('quantity', 1) }}</td>
           <td>

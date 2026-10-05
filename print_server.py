@@ -6,9 +6,9 @@ Any order it hasn't seen before gets printed as a packing slip via CUPS.
 No webhooks, no open ports, no tunnel needed.
 
 Environment variables (set in Portainer):
-  MANAPOOL_API_KEY  — your ManaPool API key
-  PRINTER_NAME      — CUPS printer name (find with: lpstat -a)
-  POLL_INTERVAL     — seconds between checks (default: 60)
+    MANAPOOL_API_KEY  — your ManaPool API key
+    PRINTER_NAME      — CUPS printer name (find with: lpstat -a)
+    POLL_INTERVAL     — seconds between checks (default: 60)
 """
 
 # pylint: disable=duplicate-code
@@ -131,6 +131,30 @@ CONDITION_LABELS = {
     "DMG": "Damaged",
 }
 
+_FLAVOR_NAME_CACHE: dict = {}  # scryfall_id -> flavor_name or None
+
+
+def get_flavor_name(scryfall_id: str) -> str | None:
+    """Look up a card's flavor name (e.g. Secret Lair alt name) from Scryfall, caching results."""
+    if scryfall_id in _FLAVOR_NAME_CACHE:
+        return _FLAVOR_NAME_CACHE[scryfall_id]
+    flavor_name = None
+    try:
+        resp = requests.get(
+            f"https://api.scryfall.com/cards/{scryfall_id}",
+            headers={
+                "User-Agent": "ManaPoolAutoPrint/1.0",
+                "Accept": "application/json",
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        flavor_name = resp.json().get("flavor_name")
+    except requests.exceptions.RequestException as e:
+        log(f"  ⚠ Scryfall lookup failed for {scryfall_id}: {e}")
+    _FLAVOR_NAME_CACHE[scryfall_id] = flavor_name
+    return flavor_name
+
 
 def flatten_item(item: dict) -> dict:
     """Flatten nested API item into the structure the packing slip template expects."""
@@ -140,9 +164,15 @@ def flatten_item(item: dict) -> dict:
     info = single or sealed
     finish_id = info.get("finish_id", "")
     condition_id = info.get("condition_id", "")
+    display_name = info.get("name", "Item")
+    scryfall_id = single.get("scryfall_id") if single else None
+    if scryfall_id:
+        flavor_name = get_flavor_name(scryfall_id)
+        if flavor_name:
+            display_name = f"{flavor_name} ({display_name})"
     return {
         "quantity": item.get("quantity", 1),
-        "name": info.get("name", "Item"),
+        "name": display_name,
         "set_code": info.get("set", ""),
         "condition": CONDITION_LABELS.get(condition_id, condition_id),
         "finish": FINISH_LABELS.get(finish_id, finish_id),

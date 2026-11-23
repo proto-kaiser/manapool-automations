@@ -3,11 +3,16 @@
 import webbrowser
 from pathlib import Path
 
+import segno
 from jinja2 import Template
 
 template = Template(Path("packing_slip.html").read_text(encoding="utf-8"))
 
 html = template.render(
+    receipt_qr=segno.make(
+        "https://manapool.com/settings/orders/suborder/00000000-0000-0000-0000-000000000000/received",
+        error="m",
+    ).svg_data_uri(scale=4, border=0),
     order_id="000000-0000000",
     order_label="000000-0000000",
     order_date="1/1/2025",
@@ -18,7 +23,7 @@ html = template.render(
         "line2": "Apt 1",
         "city": "Anytown",
         "state": "CA",
-        "zip": "90210",
+        "postal_code": "90210",
         "country": "US",
     },
     items=[

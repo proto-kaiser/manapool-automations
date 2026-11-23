@@ -21,6 +21,7 @@ from datetime import datetime
 from pathlib import Path
 
 import requests
+import segno
 from jinja2 import Template
 from playwright.sync_api import sync_playwright
 
@@ -68,27 +69,30 @@ def save_seen(seen: set):
 
 
 def fetch_new_orders(seen: set) -> list:
-    """Fetch recent orders from ManaPool, return only ones we haven't printed."""
+    """Fetch all unfulfilled orders from ManaPool, return only ones we haven't printed."""
+    orders = []
+    cursor = None
     try:
-        resp = requests.get(
-            f"{API_BASE}/seller/orders",
-            headers=api_headers(),
-            params={"is_fulfilled": "false"},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        orders = data.get("orders", data if isinstance(data, list) else [])
-        if not orders and isinstance(data, dict):
-            # Try common wrapper keys
-            for key in ["data", "results", "order_list"]:
-                if key in data and isinstance(data[key], list):
-                    orders = data[key]
-                    break
-        return [o for o in orders if str(o.get("id")) not in seen]
+        while True:
+            params = {"is_fulfilled": "false", "limit": 500}
+            if cursor:
+                params["cursor"] = cursor
+            resp = requests.get(
+                f"{API_BASE}/seller/orders",
+                headers=api_headers(),
+                params=params,
+                timeout=15,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            orders.extend(data.get("orders", []))
+            cursor = data.get("pagination", {}).get("next_cursor")
+            if not cursor:
+                break
     except requests.exceptions.RequestException as e:
         log(f"✗ Failed to fetch orders: {e}")
         return []
+    return [o for o in orders if str(o.get("id")) not in seen]
 
 
 def fetch_order_detail(order_id: str) -> dict:
@@ -97,14 +101,7 @@ def fetch_order_detail(order_id: str) -> dict:
         f"{API_BASE}/seller/orders/{order_id}", headers=api_headers(), timeout=15
     )
     resp.raise_for_status()
-    data = resp.json()
-    # Unwrap if the response nests the order under a key
-    if isinstance(data, dict):
-        for key in ["order", "data", "result"]:
-            if key in data and isinstance(data[key], dict):
-                data = data[key]
-                break
-    return data
+    return resp.json()["order"]
 
 
 def update_order_status(order_id: str, status: str = "processing"):
@@ -183,6 +180,11 @@ def flatten_item(item: dict) -> dict:
     }
 
 
+def make_qr_data_uri(url: str) -> str:
+    """Encode a URL as an inline SVG QR code usable in an <img src>."""
+    return segno.make(url, error="m").svg_data_uri(scale=4, border=0)
+
+
 def render_packing_slip(order: dict) -> str:
     """Render the packing slip HTML for an order."""
     template_path = Path(__file__).parent / "packing_slip.html"
@@ -208,14 +210,12 @@ def render_packing_slip(order: dict) -> str:
 
     shipping_address = order.get("shipping_address", {})
 
-    # Normalise postal code — API may use any of these field names
-    if "postal_code" not in shipping_address:
-        for key in ("zip", "zip_code", "zipcode", "postcode", "postalCode"):
-            if key in shipping_address:
-                shipping_address["postal_code"] = shipping_address[key]
-                break
+    # Null for orders shipped to the Mana Pool hub, which prints its own slip
+    receipt_url = order.get("receipt_confirmation_url")
+    receipt_qr = make_qr_data_uri(receipt_url) if receipt_url else None
 
     return template.render(
+        receipt_qr=receipt_qr,
         order_id=order.get("id", "N/A"),
         order_label=order.get("label", order.get("id", "N/A")),
         order_date=order_date,

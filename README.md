@@ -65,7 +65,7 @@ sudo docker build -t manapool-pricer -f Dockerfile.pricer .
 | `PRICE_UPDATE_INTERVAL` | `14400` (seconds between reprices)      |
 | `PRICE_MODIFIER`        | `-1` (% relative to market low)         |
 | `MIN_CONFIDENCE`        | `0.5` (0-1, minimum market confidence)  |
-| `MAX_REDUCTION_PCT`     | `15` (max % drop per card for pricer)   |
+| `MAX_CHANGE_PCT`        | `15` (max % price move per card, up or down; `MAX_REDUCTION_PCT` still works) |
 | `TZ`                    | `America/New_York` (container timezone) |
 
 8. Click **Deploy the stack**

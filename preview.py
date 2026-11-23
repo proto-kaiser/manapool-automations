@@ -10,7 +10,8 @@ template = Template(Path("packing_slip.html").read_text(encoding="utf-8"))
 
 html = template.render(
     receipt_qr=segno.make(
-        "https://manapool.com/settings/orders/suborder/00000000-0000-0000-0000-000000000000/received",
+        "https://manapool.com/settings/orders/suborder/"
+        "00000000-0000-0000-0000-000000000000/received",
         error="m",
     ).svg_data_uri(scale=4, border=0),
     order_id="000000-0000000",

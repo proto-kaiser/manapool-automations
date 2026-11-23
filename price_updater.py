@@ -11,6 +11,9 @@ Environment variables (set in Portainer):
   PRICE_MODIFIER       — percentage modifier relative to market low (default: -1)
   MIN_CONFIDENCE       — minimum market confidence 0-1 (default: 0.5)
   ROUND_TO             — round to nearest cents value (default: 1)
+  MAX_CHANGE_PCT       — skip items whose price would move more than this many
+                         percent in either direction (default: 15). The legacy
+                         name MAX_REDUCTION_PCT is still accepted.
 """
 
 # pylint: disable=duplicate-code
@@ -29,9 +32,15 @@ API_BASE = "https://manapool.com/api/v1"
 
 UPDATE_INTERVAL = int(os.environ.get("PRICE_UPDATE_INTERVAL", "14400"))
 PRICE_MODIFIER = float(os.environ.get("PRICE_MODIFIER", "-1"))
-MIN_CONFIDENCE = float(os.environ.get("MIN_CONFIDENCE", "0"))
+MIN_CONFIDENCE = float(os.environ.get("MIN_CONFIDENCE", "0.5"))
 ROUND_TO = int(os.environ.get("ROUND_TO", "1"))
-MAX_REDUCTION_PCT = float(os.environ.get("MAX_REDUCTION_PCT", "15"))
+# The API's maxAllowedChange is an integer percentage and applies to both
+# increases and decreases.
+MAX_CHANGE_PCT = int(
+    float(
+        os.environ.get("MAX_CHANGE_PCT") or os.environ.get("MAX_REDUCTION_PCT") or "15"
+    )
+)
 
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
 
@@ -60,7 +69,9 @@ def build_payload() -> dict:
         "pricing": {
             "strategy": "market_low_percentage",
             "modifier": PRICE_MODIFIER,
-            "maxAllowedChange": MAX_REDUCTION_PCT,
+            "roundTo": ROUND_TO,
+            "minConfidence": MIN_CONFIDENCE,
+            "maxAllowedChange": MAX_CHANGE_PCT,
         },
         "excludeLetterShippingDisabledSellers": False,
     }
@@ -197,7 +208,9 @@ def main():
     log("  ManaPool Price Updater")
     log("  Strategy : market_low_percentage")
     log(f"  Modifier : {PRICE_MODIFIER}%")
-    log(f"  Max drop : {MAX_REDUCTION_PCT}%")
+    log(f"  Max chg  : {MAX_CHANGE_PCT}%")
+    log(f"  Min conf : {MIN_CONFIDENCE}")
+    log(f"  Round to : {ROUND_TO}¢")
     log(f"  Interval : every {UPDATE_INTERVAL}s")
     log("=" * 50)
 

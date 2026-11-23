@@ -9,7 +9,7 @@ services:
       - TZ=${TZ:-America/New_York}
     volumes:
       - cups_config:/etc/cups
-      - /mnt/tank/configs/manapool-automations/cupsd.conf:/tmp/cupsd.conf
+      - /mnt/tank/configs/manapool-printer/cupsd.conf:/tmp/cupsd.conf
     command:
       [
         "/bin/sh",
@@ -23,6 +23,8 @@ services:
     restart: unless-stopped
     depends_on:
       - cups
+    volumes:
+      - /mnt/tank/configs/manapool-printer/data:/data
     environment:
       - TZ=${TZ:-America/New_York}
       - MANAPOOL_API_KEY=${MANAPOOL_API_KEY}
@@ -44,6 +46,7 @@ services:
       - PRICE_MODIFIER=${PRICE_MODIFIER:--1}
       - MIN_CONFIDENCE=${MIN_CONFIDENCE:-0.5}
       - ROUND_TO=${ROUND_TO:-1}
+      - MAX_CHANGE_PCT=${MAX_CHANGE_PCT:-${MAX_REDUCTION_PCT:-15}}
 
 volumes:
   cups_config:
